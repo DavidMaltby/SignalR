@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Configuration;
 using System.Diagnostics;
 using System.IO;
@@ -20,6 +21,8 @@ using Owin;
 
 namespace Microsoft.AspNet.SignalR.Tests.Common
 {
+    using AppFunc = Func<IDictionary<string, object>, Task>;
+
     public static class Initializer
     {
         public static void Start()
@@ -161,6 +164,31 @@ namespace Microsoft.AspNet.SignalR.Tests.Common
                 };
 
                 subApp.MapHubs(subHubsConfig);
+            });
+
+            app.Map("/force-lp-reconnect", subApp =>
+            {
+                Func<AppFunc, AppFunc> middleware = (next) =>
+                {
+                    return env =>
+                    {
+                        var request = new OwinRequest(env);
+                        var response = new OwinResponse(env);
+
+                        if (request.Path.Contains("poll"))
+                        {
+                            response.StatusCode = 500;
+                            response.Body.Close();
+                            return TaskAsyncHelper.Empty;
+                        }
+
+                        return next(env);
+                    };
+                };
+
+                subApp.Use(middleware);
+                subApp.MapConnection<ExamineReconnectPath>("/examine-reconnect", config);
+                subApp.MapHubs(hubConfig);
             });
 
             // Perf/stress test related
